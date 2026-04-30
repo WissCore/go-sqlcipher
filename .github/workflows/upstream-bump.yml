@@ -74,7 +74,13 @@ jobs:
 
       - name: Run vendor refresh script
         if: steps.detect.outputs.needs_bump == 'true'
-        run: scripts/update-vendored.sh ${{ steps.detect.outputs.upstream }}
+        env:
+          # Pass via env, never inline ${{ }} into a shell command —
+          # the value comes from `gh release view` and is therefore
+          # not attacker-controlled today, but injection-safe wiring
+          # costs nothing and keeps zizmor quiet.
+          VERSION: ${{ steps.detect.outputs.upstream }}
+        run: scripts/update-vendored.sh "${VERSION}"
 
       - name: Update CHANGELOG entry
         if: steps.detect.outputs.needs_bump == 'true'
