@@ -1,0 +1,42 @@
+# CODEOWNERS — partition by sensitivity.
+# Listed reviewers must approve any PR touching their paths.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default — everything not matched below
+*                                    @WissCore
+
+# Vendored upstream sources — refresh only via the documented bump
+# procedure in MAINTAINERS.md. Changes here MUST be a single
+# `chore(vendor): bump <upstream> to <version>` commit; no ad-hoc edits.
+/sqlite3.c                           @WissCore
+/sqlite3.h                           @WissCore
+/aes.c                               @WissCore
+/aes_tab.h                           @WissCore
+/cbc_*.c                             @WissCore
+/crypt_*.c                           @WissCore
+/sha*.c                              @WissCore
+/hmac_*.c                            @WissCore
+/tomcrypt*.h                         @WissCore
+/fortuna.c                           @WissCore
+/pkcs_5_2.c                          @WissCore
+/burn_stack.c                        @WissCore
+/zeromem.c                           @WissCore
+/hash_memory.c                       @WissCore
+/compare_testvector.c                @WissCore
+
+# CI / supply chain — high-trust paths
+/.github/workflows/                  @WissCore
+/.github/CODEOWNERS                  @WissCore
+/lefthook.yml                        @WissCore
+/scripts/                            @WissCore
+/.mise.toml                          @WissCore
+/.golangci.yml                       @WissCore
+
+# Governance documents
+/SECURITY.md                         @WissCore
+/CONTRIBUTING.md                     @WissCore
+/CODE_OF_CONDUCT.md                  @WissCore
+/MAINTAINERS.md                      @WissCore
+/CONTRIBUTORS.md                     @WissCore
+/LICENSE                             @WissCore
+/NOTICE                              @WissCore
