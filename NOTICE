@@ -1,0 +1,33 @@
+go-sqlcipher
+============
+
+This repository is a fork of github.com/mutecomm/go-sqlcipher, originally
+authored by Frank Braun and contributors between 2017 and 2020. Maintenance
+upstream stopped in December 2020 (last commit: 25f68ad, "update modules").
+We forked at that commit on 2026-04-29 to resume tracking the SQLCipher
+release cadence.
+
+The fork preserves the original git history, license terms, and code
+attribution intact. New contributions on top of the original tree are
+licensed under the same terms (BSD-3-Clause) for consistency.
+
+The vendored C source files are not original to either fork. They are
+shipped under the licenses of their upstream projects, reproduced verbatim
+in LICENSE:
+
+  - SQLCipher       — BSD-3-Clause, copyright 2008 ZETETIC LLC
+                      https://github.com/sqlcipher/sqlcipher
+  - SQLite          — public domain (no copyright asserted)
+                      https://sqlite.org
+  - libtomcrypt     — public domain (LibTom license)
+                      https://github.com/libtom/libtomcrypt
+  - mattn/go-sqlite3 — MIT, copyright 2014 Yasuhiro Matsumoto
+                      https://github.com/mattn/go-sqlite3
+
+The Go-side maintenance code in this repository is BSD-3-Clause:
+
+  Copyright (c) 2017-2020 Frank Braun and mutecomm/go-sqlcipher contributors
+  Copyright (c) 2026-present WissCore and go-sqlcipher contributors
+  All rights reserved.
+
+See LICENSE for full terms and CONTRIBUTORS.md for the author roster.

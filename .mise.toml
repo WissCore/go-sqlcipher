@@ -1,0 +1,30 @@
+# go-sqlcipher: pinned tool versions for reproducible local development.
+# Run `mise install` after cloning to set up the toolchain.
+
+[tools]
+go         = "1.22.x"
+shellcheck = "latest"
+
+# CLI helpers used in scripts and CI
+gitleaks                                  = "latest"
+golangci-lint                             = "latest"
+shfmt                                     = "latest"
+lefthook                                  = "latest"
+"aqua:securego/gosec"                     = "latest"
+"aqua:mvdan/gofumpt"                      = "latest"
+"aqua:crate-ci/typos"                     = "latest"
+"aqua:rhysd/actionlint"                   = "latest"
+"aqua:trufflesecurity/trufflehog"         = "latest"
+"aqua:google/addlicense"                  = "latest"
+"aqua:google/osv-scanner"                 = "latest"
+"npm:markdownlint-cli"                    = "latest"
+"pipx:yamllint"                           = "latest"
+"go:golang.org/x/vuln/cmd/govulncheck"    = "latest"
+
+[env]
+GOPROXY = "https://proxy.golang.org,direct"
+GOSUMDB = "sum.golang.org"
+
+[tasks.update-sqlcipher]
+description = "Refresh vendored SQLCipher amalgamation. Usage: VERSION=4.15.0 mise run update-sqlcipher"
+run = "scripts/update-vendored.sh"

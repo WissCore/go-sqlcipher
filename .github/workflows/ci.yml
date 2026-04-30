@@ -1,23 +1,96 @@
-name: CI
+name: ci
 
-on: [push, pull_request]
+# Single orchestrator entry point for every PR and every push to main.
+# Branch protection should require exactly one status check from this
+# file: ci-success. That job depends on every other job in the graph
+# and fails if any of them does not succeed.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        go-version: [1.13.x, 1.14.x, 1.15.x]
-        platform: [ubuntu-latest]
-    runs-on: ${{ matrix.platform }}
+  # Tier 1 — fast checks that don't need a Go build.
+  gitleaks:
+    uses: ./.github/workflows/gitleaks.yml
+    permissions:
+      contents: read
+
+  dco:
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/dco.yml
+    permissions:
+      contents: read
+
+  zizmor:
+    uses: ./.github/workflows/zizmor.yml
+    permissions:
+      contents: read
+      security-events: write
+
+  # Tier 1 — security scans, parallel to fast checks.
+  codeql:
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+  osv-scanner:
+    uses: ./.github/workflows/osv-scanner.yml
+    permissions:
+      contents: read
+      security-events: write
+
+  # Tier 2 — Go build + race tests across a Go-version matrix.
+  build-test:
+    needs: [gitleaks, zizmor]
+    uses: ./.github/workflows/build-test.yml
+    permissions:
+      contents: read
+
+  # Single status check branch protection should require.
+  ci-success:
+    name: ci-success
+    needs:
+      - gitleaks
+      - dco
+      - zizmor
+      - codeql
+      - osv-scanner
+      - build-test
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
     steps:
-    - name: Install Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: ${{ matrix.go-version }}
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Test
-      run: |
-        go get github.com/frankbraun/gocheck
-        export PATH=$GOPATH/bin:$PATH
-        make test
+      - name: Verify all required jobs succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          results = json.loads(os.environ["RESULTS"])
+          allowed_skip = {"dco"}
+          failed = []
+          for name, info in results.items():
+              status = info.get("result", "?")
+              print(f"  {name}: {status}")
+              if status in ("failure", "cancelled"):
+                  failed.append(f"{name} ({status})")
+              elif status == "skipped" and name not in allowed_skip:
+                  failed.append(f"{name} (unexpectedly skipped)")
+          if failed:
+              print("::error::CI gate failed: " + ", ".join(failed))
+              sys.exit(1)
+          print("::notice::All required jobs succeeded")
+          PY

@@ -1,0 +1,97 @@
+[default.extend-words]
+# Project / org names — not typos
+WissCore = "WissCore"
+wisscore = "wisscore"
+
+# Tooling proper names
+gosec        = "gosec"
+gofumpt      = "gofumpt"
+gofmt        = "gofmt"
+golangci     = "golangci"
+shfmt        = "shfmt"
+shellcheck   = "shellcheck"
+gitleaks     = "gitleaks"
+trufflehog   = "trufflehog"
+zizmor       = "zizmor"
+sigstore     = "sigstore"
+addlicense   = "addlicense"
+markdownlint = "markdownlint"
+yamllint     = "yamllint"
+actionlint   = "actionlint"
+osv          = "osv"
+slsa         = "slsa"
+SLSA         = "SLSA"
+SBOM         = "SBOM"
+SPDX         = "SPDX"
+DCO          = "DCO"
+PRAGMA       = "PRAGMA"
+SQLCipher    = "SQLCipher"
+sqlcipher    = "sqlcipher"
+SQLite       = "SQLite"
+sqlite       = "sqlite"
+mattn        = "mattn"
+mutecomm     = "mutecomm"
+xeodou       = "xeodou"
+libtomcrypt  = "libtomcrypt"
+zetetic      = "zetetic"
+Zetetic      = "Zetetic"
+
+# Real names of contributors — not typos.
+Linz         = "Linz"
+Braun        = "Braun"
+Matsumoto    = "Matsumoto"
+
+[files]
+# Vendored upstream sources are not ours to spell-check. Each upstream
+# project (SQLCipher, SQLite, libtomcrypt, mattn/go-sqlite3) handles its
+# own typos in its own repo. Do not fix typos in vendored code without
+# coordinating with the relevant upstream.
+extend-exclude = [
+  "LICENSE",
+  "NOTICE",
+  "go.sum",
+  "*.lock",
+  "*.svg",
+  # SQLite + SQLCipher amalgamation
+  "sqlite3.c",
+  "sqlite3.h",
+  # libtomcrypt vendored sources
+  "aes.c",
+  "aes_tab.h",
+  "burn_stack.c",
+  "cbc_*.c",
+  "compare_testvector.c",
+  "crypt_*.c",
+  "fortuna.c",
+  "hash_memory.c",
+  "hmac_*.c",
+  "pkcs_5_2.c",
+  "sha1.c",
+  "sha256.c",
+  "sha512.c",
+  "tomcrypt*.h",
+  "zeromem.c",
+  # Examples directory contains third-party demo dependencies
+  "_example/",
+  # Upgrade scripts and util are mostly upstream-tracking scripts
+  "upgrade/",
+  "util/",
+  # Vendored Go files from mattn/go-sqlite3; typos are upstream's to fix.
+  "sqlite3_opt_*.go",
+  "sqlite3.go",
+  "sqlite3_go18.go",
+  "sqlite3_other.go",
+  "sqlite3_libsqlite3.go",
+  "sqlite3_solaris.go",
+  "sqlite3_windows.go",
+  "sqlite3_usleep_windows.go",
+  "callback.go",
+  "convert.go",
+  "error.go",
+  "backup.go",
+  "doc.go",
+  "flags.go",
+  "sqlite3_func_crypt.go",
+  "sqlcipher.go",
+  "static_mock.go",
+]

@@ -1,0 +1,48 @@
+# Reusable: invoked by .github/workflows/ci.yml as a Tier 1 security
+# scan on every PR and main push. Also runs standalone every Monday
+# at 05:13 UTC to re-scan main against the freshly updated OSV
+# database (catches new advisories against unchanged dependencies).
+#
+# osv-scanner is invoked via the binary installed by mise (the
+# version is pinned in .mise.toml + mise.lock), so the local
+# pre-push hook and CI run the exact same scanner with the exact
+# same arguments.
+name: osv-scanner
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '13 5 * * 1'  # Monday 05:13 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup mise (without auto-installing all tools)
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151  # v4
+        with:
+          install: false
+
+      - name: Install osv-scanner at the version pinned in mise.lock
+        run: mise install aqua:google/osv-scanner
+
+      - name: Run osv-scanner
+        run: mise x aqua:google/osv-scanner -- osv-scanner scan source --recursive ./

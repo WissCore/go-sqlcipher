@@ -1,11 +1,20 @@
-.PHONY: all test update-modules
+.PHONY: all test update-sqlcipher update-modules
 
 all:
-	env GO111MODULE=on go build -v ./...
+	go build -v ./...
 
 test:
-	gocheck -g -c -e _example -e sqlite3_test -novet
+	go test -race -count=1 ./...
+
+# Refresh the vendored SQLCipher amalgamation. Usage:
+#   make update-sqlcipher VERSION=4.15.0
+update-sqlcipher:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make update-sqlcipher VERSION=<sqlcipher-tag>" >&2; \
+		exit 1; \
+	fi
+	scripts/update-vendored.sh $(VERSION)
 
 update-modules:
-	env GO111MODULE=on go get -u
-	env GO111MODULE=on go mod tidy -v
+	go get -u
+	go mod tidy -v
