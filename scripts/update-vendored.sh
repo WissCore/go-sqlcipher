@@ -35,20 +35,35 @@ git clone --depth 1 --branch "${TAG}" \
   https://github.com/sqlcipher/sqlcipher.git \
   "${WORKDIR}/sqlcipher"
 
-echo ">> Configuring and building SQLCipher amalgamation"
-(
+echo ">> Configuring SQLCipher (OpenSSL crypto, requires libssl-dev + tcl)"
+if ! (
   cd "${WORKDIR}/sqlcipher"
   ./configure --enable-tempstore=yes \
-    CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_LIBTOMCRYPT" \
+    CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL" \
+    LDFLAGS="-lcrypto" \
     >"${WORKDIR}/configure.log" 2>&1
+); then
+  echo "ERROR: ./configure failed. configure.log follows:" >&2
+  cat "${WORKDIR}/configure.log" >&2
+  exit 1
+fi
+
+echo ">> Building amalgamation (make sqlite3.c)"
+if ! (
+  cd "${WORKDIR}/sqlcipher"
   make sqlite3.c >"${WORKDIR}/make.log" 2>&1
-)
+); then
+  echo "ERROR: make sqlite3.c failed. make.log tail follows:" >&2
+  tail -n 80 "${WORKDIR}/make.log" >&2
+  exit 1
+fi
 
 if [[ ! -f "${WORKDIR}/sqlcipher/sqlite3.c" ]]; then
   echo "ERROR: SQLCipher build did not produce sqlite3.c" >&2
-  echo "See logs:" >&2
-  echo "  ${WORKDIR}/configure.log" >&2
-  echo "  ${WORKDIR}/make.log" >&2
+  echo "configure.log tail:" >&2
+  tail -n 40 "${WORKDIR}/configure.log" >&2
+  echo "make.log tail:" >&2
+  tail -n 40 "${WORKDIR}/make.log" >&2
   exit 1
 fi
 
