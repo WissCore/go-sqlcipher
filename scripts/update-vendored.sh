@@ -55,11 +55,12 @@ fi
 echo ">> Replacing vendored amalgamation in ${REPO_ROOT}"
 cp "${WORKDIR}/sqlcipher/sqlite3.c" "${REPO_ROOT}/sqlite3.c"
 cp "${WORKDIR}/sqlcipher/sqlite3.h" "${REPO_ROOT}/sqlite3.h"
+echo "${VERSION}" >"${REPO_ROOT}/.sqlcipher-version"
 
 echo ">> Done. Next steps:"
 echo "    1. cd ${REPO_ROOT}"
 echo "    2. make test   # must pass"
 echo "    3. Review the diff (git diff --stat sqlite3.c sqlite3.h)"
 echo "    4. Update CHANGELOG.md with the new version"
-echo "    5. git add sqlite3.c sqlite3.h CHANGELOG.md"
+echo "    5. git add sqlite3.c sqlite3.h .sqlcipher-version CHANGELOG.md"
 echo "    6. git commit -s -m \"chore(vendor): bump SQLCipher to ${VERSION}\""

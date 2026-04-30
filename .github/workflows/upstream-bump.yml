@@ -1,0 +1,133 @@
+# Polls sqlcipher/sqlcipher every Monday morning. When the upstream
+# release is ahead of the version recorded in .sqlcipher-version, the
+# job runs scripts/update-vendored.sh inside the runner, then opens
+# (or updates) a pull request with the refreshed amalgamation.
+#
+# The PR goes through the regular CI orchestrator (ci.yml) — branch
+# protection still requires every check to pass before a human can
+# merge it. The automation never bypasses review; it only does the
+# tedious "go fetch, regenerate amalgamation, open PR" steps.
+#
+# Manual trigger: `gh workflow run upstream-bump.yml`. Useful for
+# the initial spike-day run and for ad-hoc bumps when an upstream
+# security advisory lands between scheduled runs.
+name: upstream-bump
+
+on:
+  schedule:
+    - cron: '0 7 * * 1'  # Monday 07:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  check-and-bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+
+      - name: Detect upstream version
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Upstream's latest release tag, with the leading 'v' stripped.
+          latest=$(gh release view --repo sqlcipher/sqlcipher \
+                     --json tagName --jq '.tagName' | sed 's/^v//')
+          # Our currently vendored version, as recorded by the bump script.
+          current=$(cat .sqlcipher-version)
+          echo "upstream=${latest}"
+          echo "vendored=${current}"
+          echo "upstream=${latest}" >> "$GITHUB_OUTPUT"
+          echo "vendored=${current}" >> "$GITHUB_OUTPUT"
+          if [ "${latest}" != "${current}" ]; then
+            echo "needs_bump=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_bump=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Already at SQLCipher ${current}; nothing to do."
+          fi
+
+      - name: Install build dependencies
+        if: steps.detect.outputs.needs_bump == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libssl-dev tcl
+
+      - name: Run vendor refresh script
+        if: steps.detect.outputs.needs_bump == 'true'
+        env:
+          # Pass via env, never inline ${{ }} into a shell command —
+          # the value comes from `gh release view` and is therefore
+          # not attacker-controlled today, but injection-safe wiring
+          # costs nothing and keeps zizmor quiet.
+          VERSION: ${{ steps.detect.outputs.upstream }}
+        run: scripts/update-vendored.sh "${VERSION}"
+
+      - name: Update CHANGELOG entry
+        if: steps.detect.outputs.needs_bump == 'true'
+        env:
+          NEW_VERSION: ${{ steps.detect.outputs.upstream }}
+          OLD_VERSION: ${{ steps.detect.outputs.vendored }}
+        run: |
+          set -euo pipefail
+          # Insert an Unreleased note above any existing one. Keep a Changelog
+          # format expects new entries at the top under [Unreleased].
+          today=$(date -u +%Y-%m-%d)
+          {
+            echo "# Changelog"
+            echo
+            echo "## [Unreleased]"
+            echo
+            echo "### Changed"
+            echo
+            echo "- Bump vendored SQLCipher to ${NEW_VERSION} (was ${OLD_VERSION}). Generated automatically by .github/workflows/upstream-bump.yml on ${today}."
+            echo
+            tail -n +2 CHANGELOG.md
+          } >CHANGELOG.md.new
+          mv CHANGELOG.md.new CHANGELOG.md
+
+      - name: Open pull request
+        if: steps.detect.outputs.needs_bump == 'true'
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e  # v7.0.8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: bump/sqlcipher-${{ steps.detect.outputs.upstream }}
+          delete-branch: true
+          commit-message: |
+            chore(vendor): bump SQLCipher to ${{ steps.detect.outputs.upstream }}
+
+            Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          title: "chore(vendor): bump SQLCipher to ${{ steps.detect.outputs.upstream }}"
+          body: |
+            Automated bump from `${{ steps.detect.outputs.vendored }}` to `${{ steps.detect.outputs.upstream }}`.
+
+            Source: https://github.com/sqlcipher/sqlcipher/releases/tag/v${{ steps.detect.outputs.upstream }}
+
+            ### Reviewer checklist
+
+            - [ ] CI is green on this PR
+            - [ ] `git diff --stat sqlite3.c sqlite3.h` is dominated by amalgamation noise (no surprise touchpoints in our code)
+            - [ ] CHANGELOG entry is sensible
+            - [ ] Upstream release notes have no breaking API change for our binding
+          labels: |
+            dependencies
+            automated
