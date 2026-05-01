@@ -94,9 +94,12 @@ jobs:
           subject-path: dist/go-sqlcipher-${{ github.ref_name }}.tar.gz
 
       - name: Attest SBOM
+        # actions/attest-sbom was deprecated and merged into actions/attest;
+        # the new action takes the same subject-path + sbom-path inputs and
+        # produces an equivalent attestation.
         env:
           TAG: ${{ github.ref_name }}
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e  # v4
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26  # v4.1.0
         with:
           subject-path: dist/go-sqlcipher-${{ github.ref_name }}.tar.gz
           sbom-path: dist/go-sqlcipher.spdx.json
