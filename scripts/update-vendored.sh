@@ -36,9 +36,13 @@ git clone --depth 1 --branch "${TAG}" \
   "${WORKDIR}/sqlcipher"
 
 echo ">> Configuring SQLCipher (OpenSSL crypto, requires libssl-dev + tcl)"
+# SQLCipher 4.x switched its build system to autosetup: the legacy
+# autoconf flag --enable-tempstore became --with-tempstore. Pass both
+# CFLAGS and LDFLAGS so amalgamation generation finds OpenSSL headers
+# and libcrypto link line cleanly.
 if ! (
   cd "${WORKDIR}/sqlcipher"
-  ./configure --enable-tempstore=yes \
+  ./configure --with-tempstore=yes \
     CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL" \
     LDFLAGS="-lcrypto" \
     >"${WORKDIR}/configure.log" 2>&1
