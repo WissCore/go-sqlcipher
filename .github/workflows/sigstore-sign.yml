@@ -109,16 +109,28 @@ jobs:
         run: |
           echo "hashes=$(sha256sum "go-sqlcipher-${TAG}.tar.gz" | base64 -w0)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload artifacts to GitHub Release
+      - name: Ensure release page exists and upload artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
+          # Release page may not exist yet — manually-tagged releases
+          # have only the git tag, no GitHub-side metadata. Create it
+          # here with auto-generated notes if missing; this keeps the
+          # workflow self-contained without requiring release-please
+          # or another orchestrator upstream of us.
+          if ! gh release view "${TAG}" --repo "${REPO}" >/dev/null 2>&1; then
+            gh release create "${TAG}" --repo "${REPO}" \
+              --title "${TAG}" \
+              --generate-notes
+          fi
           gh release upload "${TAG}" \
             "dist/go-sqlcipher-${TAG}.tar.gz" \
             "dist/go-sqlcipher.spdx.json" \
             "dist/go-sqlcipher-${TAG}.sigstore.json" \
-            --repo "${{ github.repository }}" \
+            --repo "${REPO}" \
             --clobber
 
   provenance:
