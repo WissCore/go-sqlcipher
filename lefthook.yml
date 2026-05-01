@@ -17,7 +17,14 @@ pre-commit:
       run: go vet ./...
     golangci-lint:
       glob: "*.go"
-      run: golangci-lint run ./...
+      # --new-from-rev=HEAD: only fail on issues introduced by the staged
+      # changes, ignoring the 400+ pre-existing issues inherited from
+      # mutecomm/mattn upstream that we cannot fix without forking those
+      # files. --whole-files is required, without it the unused/gocyclo
+      # linters silently drop issues that point at the function decl line
+      # rather than the staged line. Pattern lifted verbatim from
+      # golangci-lint's own .pre-commit-hooks.yaml.
+      run: golangci-lint run --new-from-rev=HEAD --whole-files ./...
       skip:
         - merge
         - rebase

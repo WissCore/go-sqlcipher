@@ -5,8 +5,14 @@
 <p align="left">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue" alt="License"></a>
   <a href="https://pkg.go.dev/github.com/WissCore/go-sqlcipher/v4"><img src="https://pkg.go.dev/badge/github.com/WissCore/go-sqlcipher/v4.svg" alt="Go Reference"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/WissCore/go-sqlcipher"><img src="https://api.scorecard.dev/projects/github.com/WissCore/go-sqlcipher/badge" alt="OpenSSF Scorecard"></a>
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-orange" alt="Security policy"></a>
 </p>
+
+Maintained by [@alanwiss](https://github.com/alanwiss), who picked up
+maintenance of this driver in 2026 after the upstream had been dormant
+since 2020. See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for the full chain
+of credits going back to the original authors.
 
 A Go driver for SQLite that keeps every database file encrypted at rest with
 SQLCipher's audited AES-256 + HMAC-SHA-512 page format. Implements the standard
