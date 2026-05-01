@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Bump vendored SQLCipher to 4.15.0 (was 4.4.2). Generated automatically by .github/workflows/upstream-bump.yml on 2026-05-01.
+
+
 All notable changes to this fork are documented here. The format follows
 [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) and the
 versioning is [SemVer 2.0](https://semver.org/spec/v2.0.0.html).
