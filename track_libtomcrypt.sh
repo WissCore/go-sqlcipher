@@ -46,6 +46,7 @@ cp -f $ltd/src/misc/crypt/crypt_register_cipher.c .
 cp -f $ltd/src/misc/crypt/crypt_register_hash.c .
 cp -f $ltd/src/misc/crypt/crypt_register_prng.c .
 cp -f $ltd/src/prngs/fortuna.c .
+cp -f $ltd/src/prngs/rng_get_bytes.c .
 cp -f $ltd/src/hashes/helper/hash_memory.c .
 cp -f $ltd/src/mac/hmac/hmac_done.c .
 cp -f $ltd/src/mac/hmac/hmac_init.c .
