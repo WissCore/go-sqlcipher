@@ -52,27 +52,79 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
+    errcheck:
+      # Industry consensus (Cheney, Gitaly MR!4810, kisielk/errcheck#101):
+      # Close() on read-only database/sql resources returns errors that
+      # are not actionable. errcheck matches by exact type path, so each
+      # concrete type is listed — (io.Closer).Close alone does not match
+      # concrete types.
+      exclude-functions:
+        - (*database/sql.DB).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.Stmt).Close
+        - (*database/sql.Conn).Close
+        - (*database/sql.Tx).Rollback
+        # database/sql/driver interface closes (low-level driver tests).
+        - (database/sql/driver.Conn).Close
+        - (database/sql/driver.Rows).Close
+        - (io.Closer).Close
+        # Test-cleanup helpers; their failures are not actionable.
+        - os.Remove
+        - os.RemoveAll
+        # NOTE: (*os.File).Close is intentionally NOT excluded globally.
+        # Write-path closes can fail meaningfully (fsync errors); they
+        # must be checked. *os.File.Close in test cleanup is silenced
+        # via the path-scoped exclude-rules below.
 
   exclusions:
     rules:
-      # Smoke tests spawn the moldd binary they themselves built in
-      # TestMain; the path is fully under the suite's control. G204
-      # ("subprocess launched with variable") is a structural false
-      # positive against this pattern. Scope is deliberately narrow:
-      # only the smoke package, only that rule.
-      - path: server/internal/smoke/
-        text: "G204"
+      # SHA1/MD5 in sqlite3_func_crypt.go are required by the SQLite
+      # UserAuth contract (_auth_crypt=sha1|ssha1 connection-string API).
+      # Removing them breaks every existing user. Inherited from mattn
+      # upstream; documented intentional behaviour.
+      - path: sqlite3_func_crypt\.go
         linters:
           - gosec
-      # The smoke registry dispatches each case as a top-level test
-      # body; the linter sees the *_smoke.go Run functions as helpers
-      # because they take *testing.T but never call t.Helper(). They
-      # are not helpers — they ARE the test bodies — so a helper
-      # frame skip would degrade failure messages. Scope is narrow:
-      # only the smoke package.
-      - path: server/internal/smoke/
+      # gocritic dupSubExpr triggers a confirmed false positive on cgo
+      # C.* function calls (go-critic#897): the AST-level check misreads
+      # cgo-generated call expressions as identical LHS/RHS.
+      - linters:
+          - gocritic
+        text: "dupSubExpr"
+        source: "C\\."
+      # math/rand in test files is fine for non-crypto deterministic
+      # data generation (test fixtures, fuzzing seeds). crypto/rand is
+      # mandated only for security-sensitive paths.
+      - path: _test\.go
         linters:
-          - thelper
+          - gosec
+        text: "G404"
+      # File path from variable in test code is by design: tests work
+      # against tempdir paths produced by t.TempDir / TempFilename, fully
+      # under the test's control.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G304"
+      # *os.File.Close in tests after a read-only path: failure is not
+      # actionable. Production write-path closes are NOT covered here —
+      # they must be checked explicitly.
+      - path: _test\.go
+        linters:
+          - errcheck
+        text: "Error return value of `.+\\.Close` is not checked"
+        source: "(\\*os\\.File|f)\\.Close\\(\\)"
+      # gosec G104 (errors unhandled) is the gosec-side duplicate of
+      # errcheck. errcheck has been configured with an explicit exclude
+      # list above for documented-OK Close patterns; G104 doesn't honour
+      # that list, so it would re-report the same lines. Scope G104 off
+      # in test files where the surface is identical to errcheck's; keep
+      # it ON for production code, where it adds protection errcheck
+      # might miss (kisielk/errcheck#101).
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G104"
 
 formatters:
   enable:

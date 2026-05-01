@@ -3,6 +3,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
 
+//go:build cgo
 // +build cgo
 
 package sqlite3
@@ -22,7 +23,9 @@ func TestFTS3(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("DROP TABLE foo")
+	if _, execErr := db.Exec("DROP TABLE IF EXISTS foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("CREATE VIRTUAL TABLE foo USING fts3(id INTEGER PRIMARY KEY, value TEXT)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
@@ -48,8 +51,8 @@ func TestFTS3(t *testing.T) {
 		var id int
 		var value string
 
-		if err := rows.Scan(&id, &value); err != nil {
-			t.Error("Unable to scan results:", err)
+		if scanErr := rows.Scan(&id, &value); scanErr != nil {
+			t.Error("Unable to scan results:", scanErr)
 			continue
 		}
 
@@ -58,6 +61,9 @@ func TestFTS3(t *testing.T) {
 		} else if id == 2 && value != `今日は いい 天気だ` {
 			t.Error("Value for id 2 should be `今日は いい 天気だ`, but:", value)
 		}
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 
 	rows, err = db.Query("SELECT value FROM foo WHERE value MATCH '今日* 天麩羅*'")
@@ -82,6 +88,9 @@ func TestFTS3(t *testing.T) {
 	if rows.Next() {
 		t.Fatal("Result should be only one")
 	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
+	}
 }
 
 func TestFTS4(t *testing.T) {
@@ -93,7 +102,9 @@ func TestFTS4(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("DROP TABLE foo")
+	if _, execErr := db.Exec("DROP TABLE IF EXISTS foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("CREATE VIRTUAL TABLE foo USING fts4(tokenize=unicode61, id INTEGER PRIMARY KEY, value TEXT)")
 	switch {
 	case err != nil && err.Error() == "unknown tokenizer: unicode61":
@@ -128,5 +139,8 @@ func TestFTS4(t *testing.T) {
 
 	if rows.Next() {
 		t.Fatal("Result should be only one")
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 }

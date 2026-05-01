@@ -3,6 +3,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
 
+//go:build go1.8 && cgo
 // +build go1.8,cgo
 
 package sqlite3
@@ -10,8 +11,8 @@ package sqlite3
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"sync"
@@ -82,6 +83,7 @@ func randStringBytes(n int) string {
 }
 
 func initDatabase(t *testing.T, db *sql.DB, rowCount int64) {
+	t.Helper()
 	for _, query := range testTableStatements {
 		_, err := db.Exec(query)
 		if err != nil {
@@ -127,9 +129,15 @@ func TestShortTimeout(t *testing.T) {
 	query := `SELECT key1, key_id, key2, key3, key4, key5, key6, data
 		FROM test_table
 		ORDER BY key2 ASC`
-	_, err = db.QueryContext(ctx, query)
-	if err != nil && err != context.DeadlineExceeded {
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
+	}
+	if rows != nil {
+		defer rows.Close()
+		if iterErr := rows.Err(); iterErr != nil && !errors.Is(iterErr, context.DeadlineExceeded) {
+			t.Fatal(iterErr)
+		}
 	}
 	if ctx.Err() != nil && ctx.Err() != context.DeadlineExceeded {
 		t.Fatal(ctx.Err())
@@ -171,11 +179,11 @@ FROM test_table t1 LEFT OUTER JOIN test_table t2`
 	r, err := db.ExecContext(ctx, q)
 	// racy check
 	if r != nil {
-		n, err := r.RowsAffected()
+		n, execErr := r.RowsAffected()
 		t.Logf("query should not have succeeded: rows=%d; err=%v; duration=%s",
-			n, err, time.Since(ts).String())
+			n, execErr, time.Since(ts).String())
 	}
-	if err != context.DeadlineExceeded {
+	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err, ctx.Err())
 	}
 }
@@ -200,7 +208,7 @@ func TestQueryRowContextCancel(t *testing.T) {
 
 		cancel()
 		// it is fine to get "nil" as context cancellation can be handled with delay
-		if err := row.Scan(&keyID); err != nil && err != context.Canceled {
+		if err := row.Scan(&keyID); err != nil && !errors.Is(err, context.Canceled) {
 			if err.Error() == "sql: Rows are closed" {
 				// see https://github.com/golang/go/issues/24431
 				// fixed in 1.11.1 to properly return context error
@@ -289,6 +297,7 @@ func TestExecCancel(t *testing.T) {
 }
 
 func doTestOpenContext(t *testing.T, option string) (string, error) {
+	t.Helper()
 	tempFilename := TempFilename(t)
 	url := tempFilename + option
 
@@ -402,7 +411,7 @@ func TestFileCopyTruncate(t *testing.T) {
 
 	// copy db to new file
 	var data []byte
-	data, err = ioutil.ReadFile(tempFilename)
+	data, err = os.ReadFile(tempFilename)
 	if err != nil {
 		t.Fatal("read file error:", err)
 	}
@@ -430,8 +439,11 @@ func TestFileCopyTruncate(t *testing.T) {
 		t.Fatal("close file error:", err)
 	}
 
-	// truncate current db file
-	f, err = os.OpenFile(tempFilename, os.O_WRONLY|os.O_TRUNC, 0666)
+	// truncate current db file. Perm arg is ignored when O_CREATE is not
+	// set, but gosec G302 flags 0o666 anyway; pick a restrictive value.
+	// (G304 file-inclusion-from-variable is silenced globally for tests
+	// in .golangci.yml — tempFilename is fully test-controlled.)
+	f, err = os.OpenFile(tempFilename, os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		t.Fatal("open file error:", err)
 	}
