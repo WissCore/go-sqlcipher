@@ -1,6 +1,6 @@
 module github.com/WissCore/go-sqlcipher/v4
 
-go 1.24
+go 1.25
 
 require github.com/stretchr/testify v1.10.0
 

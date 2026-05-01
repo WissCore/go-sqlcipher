@@ -7,7 +7,14 @@ package sqlite3
 // enable encryption codec in sqlite
 #cgo CFLAGS: -DSQLITE_HAS_CODEC
 
-// use memory for temporay storage in sqlite
+// SQLCipher 4.x refuses to compile without explicit init/shutdown
+// hook registration. The amalgamation has a #error guard checking
+// for these macros; passing them registers sqlcipher_extra_init /
+// sqlcipher_extra_shutdown as the SQLite extension entry points.
+#cgo CFLAGS: -DSQLITE_EXTRA_INIT=sqlcipher_extra_init
+#cgo CFLAGS: -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown
+
+// use memory for temporary storage in sqlite
 #cgo CFLAGS: -DSQLITE_TEMP_STORE=2
 
 // use libtomcrypt implementation in sqlcipher
