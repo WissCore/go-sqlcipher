@@ -8,7 +8,7 @@
   files. `for rows.Next()` loops now check `rows.Err()`; `*sql.Rows` and
   `*sql.Stmt` resources are deferred-closed; `DROP TABLE` statements use
   `IF EXISTS` so spurious "no such table" errors stop being silently
-  swallowed. See `plans/lint-cleanup-plan.md` Sprint 1 (T1.1 + T1.2).
+  swallowed.
 
 ### Changed
 

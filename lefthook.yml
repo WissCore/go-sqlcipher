@@ -18,10 +18,9 @@ pre-commit:
     golangci-lint:
       glob: "*.go"
       # --new-from-rev=HEAD --whole-files: gate-as-you-go for inherited
-      # legacy code. Touching a file forces fixing ALL its lint issues,
-      # which keeps the cleanup plan (plans/lint-cleanup-plan.md) honest
-      # — every cleanup PR fully cleans the files it touches. Files we
-      # are not ready to clean today are listed under issues.exclude-rules
+      # legacy code. Touching a file forces fixing ALL its lint issues —
+      # every cleanup PR fully cleans the files it touches. Files we are
+      # not ready to clean today are listed under issues.exclude-rules
       # in .golangci.yml; entries are removed as files get cleaned.
       # Pattern from golangci-lint's own .pre-commit-hooks.yaml.
       run: golangci-lint run --new-from-rev=HEAD --whole-files ./...
