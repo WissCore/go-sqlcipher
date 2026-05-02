@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   linux-x86_64:
-    name: Linux x86_64 / go ${{ matrix.go }}
+    name: Linux x86_64 — go ${{ matrix.go }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -51,7 +51,7 @@ jobs:
         run: go test -race -count=1 ./...
 
   linux-arm64:
-    name: Linux ARM64 / go ${{ matrix.go }}
+    name: Linux ARM64 — go ${{ matrix.go }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     strategy:
@@ -83,7 +83,7 @@ jobs:
         run: go test -race -count=1 ./...
 
   macos-apple-silicon:
-    name: macOS Apple Silicon / go ${{ matrix.go }}
+    name: macOS Apple Silicon — go ${{ matrix.go }}
     runs-on: macos-latest
     timeout-minutes: 20
     strategy:
@@ -115,7 +115,7 @@ jobs:
         run: go test -race -count=1 ./...
 
   windows-x86_64:
-    name: Windows x86_64 / go ${{ matrix.go }}
+    name: Windows x86_64 — go ${{ matrix.go }}
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:
