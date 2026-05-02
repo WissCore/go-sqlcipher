@@ -3,10 +3,17 @@
 > Self-contained Go driver for [SQLCipher](https://www.zetetic.net/sqlcipher/) — encrypted SQLite, audited, easy.
 
 <p align="left">
+  <a href="https://github.com/WissCore/go-sqlcipher/releases/latest"><img src="https://img.shields.io/github/v/release/WissCore/go-sqlcipher?sort=semver&color=blue" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue" alt="License"></a>
   <a href="https://pkg.go.dev/github.com/WissCore/go-sqlcipher/v4"><img src="https://pkg.go.dev/badge/github.com/WissCore/go-sqlcipher/v4.svg" alt="Go Reference"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/WissCore/go-sqlcipher"><img src="https://api.scorecard.dev/projects/github.com/WissCore/go-sqlcipher/badge" alt="OpenSSF Scorecard"></a>
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-orange" alt="Security policy"></a>
+</p>
+
+<p align="left">
+  <a href="https://github.com/WissCore/go-sqlcipher/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/WissCore/go-sqlcipher/ci.yml?branch=main&label=CI" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/tested-Linux%20x64%20%7C%20Linux%20arm64%20%7C%20macOS%20%7C%20Windows-success" alt="Tested platforms">
+  <img src="https://img.shields.io/badge/Go-oldstable%20%7C%20stable-00ADD8?logo=go" alt="Go versions">
 </p>
 
 Maintained by [@alanwiss](https://github.com/alanwiss), who picked up
