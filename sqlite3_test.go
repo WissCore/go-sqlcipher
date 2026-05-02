@@ -3,17 +3,18 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
 
+//go:build cgo
 // +build cgo
 
 package sqlite3
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"net/url"
 	"os"
@@ -28,7 +29,8 @@ import (
 )
 
 func TempFilename(t *testing.T) string {
-	f, err := ioutil.TempFile("", "go-sqlite3-test-")
+	t.Helper()
+	f, err := os.CreateTemp("", "go-sqlite3-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +39,7 @@ func TempFilename(t *testing.T) string {
 }
 
 func doTestOpen(t *testing.T, option string) (string, error) {
+	t.Helper()
 	tempFilename := TempFilename(t)
 	url := tempFilename + option
 
@@ -64,7 +67,9 @@ func doTestOpen(t *testing.T, option string) (string, error) {
 		return "ping error:", err
 	}
 
-	_, err = db.Exec("drop table foo")
+	if _, execErr := db.Exec("drop table if exists foo"); execErr != nil {
+		return "Failed to drop table:", execErr
+	}
 	_, err = db.Exec("create table foo (id integer)")
 	if err != nil {
 		return "Failed to create table:", err
@@ -160,8 +165,8 @@ func TestOpenNoCreate(t *testing.T) {
 		}
 	}
 
-	sqlErr, ok := err.(Error)
-	if !ok {
+	var sqlErr Error
+	if !errors.As(err, &sqlErr) {
 		t.Fatalf("expected sqlite3.Error, but got %T", err)
 	}
 
@@ -170,9 +175,9 @@ func TestOpenNoCreate(t *testing.T) {
 	}
 
 	// make sure database file truly was not created
-	if _, err := os.Stat(filename); !os.IsNotExist(err) {
-		if err != nil {
-			t.Fatal(err)
+	if _, statErr := os.Stat(filename); !os.IsNotExist(statErr) {
+		if statErr != nil {
+			t.Fatal(statErr)
 		}
 		t.Fatal("expected database file to not exist")
 	}
@@ -205,7 +210,9 @@ func TestReadonly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db1.Exec("CREATE TABLE test (x int, y float)")
+	if _, execErr := db1.Exec("CREATE TABLE test (x int, y float)"); execErr != nil {
+		t.Fatal("Failed to create table:", execErr)
+	}
 
 	db2, err := sql.Open("sqlite3", "file:"+tempFilename+"?mode=ro")
 	if err != nil {
@@ -284,13 +291,18 @@ func TestClose(t *testing.T) {
 		t.Fatal("Failed to open database:", err)
 	}
 
-	_, err = db.Exec("drop table foo")
+	if _, execErr := db.Exec("drop table if exists foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("create table foo (id integer)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
 	}
 
-	stmt, err := db.Prepare("select id from foo where id = ?")
+	// No defer stmt.Close() here: the test asserts that Exec on a stmt
+	// whose parent DB is already Closed fails. The DB's Close cascades
+	// to all prepared statements, so the stmt is reaped automatically.
+	stmt, err := db.Prepare("select id from foo where id = ?") //nolint:sqlclosecheck // intentionally testing post-Close stmt behaviour
 	if err != nil {
 		t.Fatal("Failed to select records:", err)
 	}
@@ -311,7 +323,9 @@ func TestInsert(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("drop table foo")
+	if _, execErr := db.Exec("drop table if exists foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("create table foo (id integer)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
@@ -335,9 +349,14 @@ func TestInsert(t *testing.T) {
 	rows.Next()
 
 	var result int
-	rows.Scan(&result)
+	if err := rows.Scan(&result); err != nil {
+		t.Fatal("Scan failed:", err)
+	}
 	if result != 123 {
 		t.Errorf("Expected %d for fetched result, but %d:", 123, result)
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 }
 
@@ -354,16 +373,18 @@ func TestUpsert(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("drop table foo")
+	if _, execErr := db.Exec("drop table if exists foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("create table foo (name string primary key, counter integer)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
 	}
 
 	for i := 0; i < 10; i++ {
-		res, err := db.Exec("insert into foo(name, counter) values('key', 1) on conflict (name) do update set counter=counter+1")
-		if err != nil {
-			t.Fatal("Failed to upsert record:", err)
+		res, execErr := db.Exec("insert into foo(name, counter) values('key', 1) on conflict (name) do update set counter=counter+1")
+		if execErr != nil {
+			t.Fatal("Failed to upsert record:", execErr)
 		}
 		affected, _ := res.RowsAffected()
 		if affected != 1 {
@@ -380,14 +401,18 @@ func TestUpsert(t *testing.T) {
 
 	var resultName string
 	var resultCounter int
-	rows.Scan(&resultName, &resultCounter)
+	if err := rows.Scan(&resultName, &resultCounter); err != nil {
+		t.Fatal("Scan failed:", err)
+	}
 	if resultName != "key" {
 		t.Errorf("Expected %s for fetched result, but %s:", "key", resultName)
 	}
 	if resultCounter != 10 {
 		t.Errorf("Expected %d for fetched result, but %d:", 10, resultCounter)
 	}
-
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
+	}
 }
 
 func TestUpdate(t *testing.T) {
@@ -399,7 +424,9 @@ func TestUpdate(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("drop table foo")
+	if _, execErr := db.Exec("drop table if exists foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("create table foo (id integer)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
@@ -413,7 +440,7 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to get LastInsertId:", err)
 	}
-	affected, _ := res.RowsAffected()
+	affected, err := res.RowsAffected()
 	if err != nil {
 		t.Fatal("Failed to get RowsAffected:", err)
 	}
@@ -432,7 +459,7 @@ func TestUpdate(t *testing.T) {
 	if expected != lastID {
 		t.Errorf("Expected %q for last Id, but %q:", expected, lastID)
 	}
-	affected, _ = res.RowsAffected()
+	affected, err = res.RowsAffected()
 	if err != nil {
 		t.Fatal("Failed to get RowsAffected:", err)
 	}
@@ -449,9 +476,14 @@ func TestUpdate(t *testing.T) {
 	rows.Next()
 
 	var result int
-	rows.Scan(&result)
+	if err := rows.Scan(&result); err != nil {
+		t.Fatal("Scan failed:", err)
+	}
 	if result != 234 {
 		t.Errorf("Expected %d for fetched result, but %d:", 234, result)
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 }
 
@@ -464,7 +496,9 @@ func TestDelete(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("drop table foo")
+	if _, execErr := db.Exec("drop table if exists foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("create table foo (id integer)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
@@ -514,6 +548,9 @@ func TestDelete(t *testing.T) {
 	if rows.Next() {
 		t.Error("Fetched row but expected not rows")
 	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
+	}
 }
 
 func TestBooleanRoundtrip(t *testing.T) {
@@ -525,7 +562,9 @@ func TestBooleanRoundtrip(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("DROP TABLE foo")
+	if _, execErr := db.Exec("DROP TABLE IF EXISTS foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("CREATE TABLE foo(id INTEGER, value BOOL)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
@@ -558,10 +597,12 @@ func TestBooleanRoundtrip(t *testing.T) {
 
 		if id == 1 && !value {
 			t.Error("Value for id 1 should be true, not false")
-
 		} else if id == 2 && value {
 			t.Error("Value for id 2 should be false, not true")
 		}
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 }
 
@@ -576,7 +617,9 @@ func TestTimestamp(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("DROP TABLE foo")
+	if _, execErr := db.Exec("DROP TABLE IF EXISTS foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("CREATE TABLE foo(id INTEGER, ts timeSTAMP, dt DATETIME)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
@@ -664,6 +707,10 @@ func TestTimestamp(t *testing.T) {
 		}
 	}
 
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
+	}
+
 	if seen != len(tests) {
 		t.Errorf("Expected to see %d rows", len(tests))
 	}
@@ -702,20 +749,24 @@ func TestBoolean(t *testing.T) {
 		t.Fatal("Failed to insert nonsense:", err)
 	}
 
-	rows, err := db.Query("SELECT id, fbool FROM foo where fbool = ?", bool1)
+	rows1, err := db.Query("SELECT id, fbool FROM foo where fbool = ?", bool1)
 	if err != nil {
 		t.Fatal("Unable to query foo table:", err)
 	}
+	defer rows1.Close()
 	counter := 0
 
 	var id int
 	var fbool bool
 
-	for rows.Next() {
-		if err := rows.Scan(&id, &fbool); err != nil {
-			t.Fatal("Unable to scan results:", err)
+	for rows1.Next() {
+		if scanErr := rows1.Scan(&id, &fbool); scanErr != nil {
+			t.Fatal("Unable to scan results:", scanErr)
 		}
 		counter++
+	}
+	if iterErr := rows1.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 
 	if counter != 1 {
@@ -726,18 +777,22 @@ func TestBoolean(t *testing.T) {
 		t.Fatalf("Value for id 1 should be %v, not %v", bool1, fbool)
 	}
 
-	rows, err = db.Query("SELECT id, fbool FROM foo where fbool = ?", bool2)
+	rows2, err := db.Query("SELECT id, fbool FROM foo where fbool = ?", bool2)
 	if err != nil {
 		t.Fatal("Unable to query foo table:", err)
 	}
+	defer rows2.Close()
 
 	counter = 0
 
-	for rows.Next() {
-		if err := rows.Scan(&id, &fbool); err != nil {
-			t.Fatal("Unable to scan results:", err)
+	for rows2.Next() {
+		if scanErr := rows2.Scan(&id, &fbool); scanErr != nil {
+			t.Fatal("Unable to scan results:", scanErr)
 		}
 		counter++
+	}
+	if iterErr := rows2.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 
 	if counter != 1 {
@@ -749,15 +804,19 @@ func TestBoolean(t *testing.T) {
 	}
 
 	// make sure "nonsense" triggered an error
-	rows, err = db.Query("SELECT id, fbool FROM foo where id=?;", 3)
+	rows3, err := db.Query("SELECT id, fbool FROM foo where id=?;", 3)
 	if err != nil {
 		t.Fatal("Unable to query foo table:", err)
 	}
+	defer rows3.Close()
 
-	rows.Next()
-	err = rows.Scan(&id, &fbool)
+	rows3.Next()
+	err = rows3.Scan(&id, &fbool)
 	if err == nil {
 		t.Error("Expected error from \"nonsense\" bool")
+	}
+	if iterErr := rows3.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 }
 
@@ -784,6 +843,7 @@ func TestFloat32(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unable to query foo table:", err)
 	}
+	defer rows.Close()
 
 	if !rows.Next() {
 		t.Fatal("Unable to query results:", err)
@@ -795,6 +855,9 @@ func TestFloat32(t *testing.T) {
 	}
 	if id != nil {
 		t.Error("Expected nil but not")
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 }
 
@@ -811,6 +874,7 @@ func TestNull(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unable to query foo table:", err)
 	}
+	defer rows.Close()
 
 	if !rows.Next() {
 		t.Fatal("Unable to query results:", err)
@@ -826,6 +890,9 @@ func TestNull(t *testing.T) {
 	}
 	if f != 3.141592 {
 		t.Error("Expected 3.141592 but not")
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 }
 
@@ -857,6 +924,7 @@ func TestTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unable to query foo table:", err)
 	}
+	defer rows.Close()
 
 	err = tx.Rollback()
 	if err != nil {
@@ -865,6 +933,11 @@ func TestTransaction(t *testing.T) {
 
 	if rows.Next() {
 		t.Fatal("Unable to query results:", err)
+	}
+	// rows.Err() after Rollback returns context.Canceled because the
+	// underlying tx context is cancelled; that's expected, not a bug.
+	if iterErr := rows.Err(); iterErr != nil && !errors.Is(iterErr, context.Canceled) {
+		t.Fatal("rows iteration:", iterErr)
 	}
 
 	tx, err = db.Begin()
@@ -882,10 +955,21 @@ func TestTransaction(t *testing.T) {
 		t.Fatal("Failed to commit transaction:", err)
 	}
 
-	rows, err = tx.Query("SELECT id from foo")
-	if err == nil {
-		t.Fatal("Expected failure to query")
-	}
+	// Query against a committed tx is expected to error. database/sql does
+	// not formally guarantee rows == nil when err != nil across all driver
+	// paths, so capture both and close defensively in a wrapped scope.
+	func() {
+		rows2, execErr := tx.Query("SELECT id from foo")
+		if rows2 != nil {
+			defer rows2.Close()
+			if iterErr := rows2.Err(); iterErr != nil && !errors.Is(iterErr, context.Canceled) {
+				t.Fatal("rows iteration:", iterErr)
+			}
+		}
+		if execErr == nil {
+			t.Fatal("Expected failure to query")
+		}
+	}()
 }
 
 func TestWAL(t *testing.T) {
@@ -918,6 +1002,7 @@ func TestWAL(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to Prepare:", err)
 	}
+	defer s.Close()
 
 	var count int
 	if err = trans.QueryRow("SELECT count(user) FROM test;").Scan(&count); err != nil {
@@ -925,9 +1010,6 @@ func TestWAL(t *testing.T) {
 	}
 	if _, err = s.Exec("bbbb", "aaaa"); err != nil {
 		t.Fatal("Failed to Exec prepared statement:", err)
-	}
-	if err = s.Close(); err != nil {
-		t.Fatal("Failed to Close prepared statement:", err)
 	}
 	if err = trans.Commit(); err != nil {
 		t.Fatal("Failed to Commit:", err)
@@ -945,7 +1027,9 @@ func TestTimezoneConversion(t *testing.T) {
 		}
 		defer db.Close()
 
-		_, err = db.Exec("DROP TABLE foo")
+		if _, execErr := db.Exec("DROP TABLE IF EXISTS foo"); execErr != nil {
+			t.Fatal("Failed to drop table:", execErr)
+		}
 		_, err = db.Exec("CREATE TABLE foo(id INTEGER, ts TIMESTAMP, dt DATETIME)")
 		if err != nil {
 			t.Fatal("Failed to create table:", err)
@@ -1024,6 +1108,10 @@ func TestTimezoneConversion(t *testing.T) {
 			}
 		}
 
+		if iterErr := rows.Err(); iterErr != nil {
+			t.Fatal("rows iteration:", iterErr)
+		}
+
 		if seen != len(tests) {
 			t.Errorf("Expected to see %d rows", len(tests))
 		}
@@ -1090,6 +1178,9 @@ func TestQueryer(t *testing.T) {
 				t.Error("Failed to db.Query: not matched results")
 			}
 		}
+		if iterErr := rows.Err(); iterErr != nil {
+			t.Fatal("rows iteration:", iterErr)
+		}
 	}
 }
 
@@ -1100,9 +1191,15 @@ func TestStress(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to open database:", err)
 	}
-	db.Exec("CREATE TABLE foo (id int);")
-	db.Exec("INSERT INTO foo VALUES(1);")
-	db.Exec("INSERT INTO foo VALUES(2);")
+	for _, q := range []string{
+		"CREATE TABLE foo (id int);",
+		"INSERT INTO foo VALUES(1);",
+		"INSERT INTO foo VALUES(2);",
+	} {
+		if _, execErr := db.Exec(q); execErr != nil {
+			t.Fatal("seed:", execErr)
+		}
+	}
 	db.Close()
 
 	for i := 0; i < 10000; i++ {
@@ -1111,21 +1208,26 @@ func TestStress(t *testing.T) {
 			t.Fatal("Failed to open database:", err)
 		}
 
+		// IIFE per inner iteration so defer rows.Close() fires before the
+		// next loop turn, not at the outer test function's exit.
 		for j := 0; j < 3; j++ {
-			rows, err := db.Query("select * from foo where id=1;")
-			if err != nil {
-				t.Error("Failed to call db.Query:", err)
-			}
-			for rows.Next() {
-				var i int
-				if err := rows.Scan(&i); err != nil {
-					t.Errorf("Scan failed: %v\n", err)
+			func() {
+				rows, err := db.Query("select * from foo where id=1;")
+				if err != nil {
+					t.Error("Failed to call db.Query:", err)
+					return
 				}
-			}
-			if err := rows.Err(); err != nil {
-				t.Errorf("Post-scan failed: %v\n", err)
-			}
-			rows.Close()
+				defer rows.Close()
+				for rows.Next() {
+					var i int
+					if err := rows.Scan(&i); err != nil {
+						t.Errorf("Scan failed: %v\n", err)
+					}
+				}
+				if err := rows.Err(); err != nil {
+					t.Errorf("Post-scan failed: %v\n", err)
+				}
+			}()
 		}
 		db.Close()
 	}
@@ -1139,8 +1241,12 @@ func TestDateTimeLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to open database:", err)
 	}
-	db.Exec("CREATE TABLE foo (dt datetime);")
-	db.Exec("INSERT INTO foo VALUES('2015-03-05 15:16:17');")
+	if _, execErr := db.Exec("CREATE TABLE foo (dt datetime);"); execErr != nil {
+		t.Fatal("create:", execErr)
+	}
+	if _, execErr := db.Exec("INSERT INTO foo VALUES('2015-03-05 15:16:17');"); execErr != nil {
+		t.Fatal("insert:", execErr)
+	}
 
 	row := db.QueryRow("select * from foo")
 	var d time.Time
@@ -1175,7 +1281,9 @@ func TestDateTimeLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to parse datetime:", err)
 	}
-	db.Exec("INSERT INTO foo VALUES(?);", dt)
+	if _, execErr := db.Exec("INSERT INTO foo VALUES(?);", dt); execErr != nil {
+		t.Fatal("insert:", execErr)
+	}
 
 	db.Close()
 	db, err = sql.Open("sqlite3", tempFilename+"?_loc="+zone)
@@ -1257,7 +1365,7 @@ func (t TimeStamp) Scan(value interface{}) error {
 }
 
 func (t TimeStamp) Value() (driver.Value, error) {
-	return t.Time.Format(CurrentTimeStamp), nil
+	return t.Format(CurrentTimeStamp), nil
 }
 
 func TestDateTimeNow(t *testing.T) {
@@ -1281,12 +1389,15 @@ func TestFunctionRegistration(t *testing.T) {
 	addi64 := func(a, b int64) int64 { return a + b }
 	addu8_16_32 := func(a uint8, b uint16) uint32 { return uint32(a) + uint32(b) }
 	addu64 := func(a, b uint64) uint64 { return a + b }
-	addiu := func(a int, b uint) int64 { return int64(a) + int64(b) }
+	addiu := func(a int, b uint) int64 {
+		// Test custom SQL function; inputs are controlled by test data
+		// (see custom_add registration below). gosec G115 is a false
+		// positive here because the test never feeds values > MaxInt64.
+		return int64(a) + int64(b) //nolint:gosec
+	}
 	addf32_64 := func(a float32, b float64) float64 { return float64(a) + b }
 	not := func(a bool) bool { return !a }
-	regex := func(re, s string) (bool, error) {
-		return regexp.MatchString(re, s)
-	}
+	regex := regexp.MatchString
 	generic := func(a interface{}) int64 {
 		switch a.(type) {
 		case int64:
@@ -1570,7 +1681,6 @@ func TestCollationRegistration(t *testing.T) {
 }
 
 func TestDeclTypes(t *testing.T) {
-
 	d := SQLiteDriver{}
 
 	conn, err := d.Open(":memory:")
@@ -1622,7 +1732,7 @@ func TestPinger(t *testing.T) {
 
 func TestUpdateAndTransactionHooks(t *testing.T) {
 	var events []string
-	var commitHookReturn = 0
+	commitHookReturn := 0
 
 	sql.Register("sqlite3_UpdateHook", &SQLiteDriver{
 		ConnectHook: func(conn *SQLiteConn) error {
@@ -1664,7 +1774,7 @@ func TestUpdateAndTransactionHooks(t *testing.T) {
 		t.Error("Commit hook failed to rollback transaction")
 	}
 
-	var expected = []string{
+	expected := []string{
 		"commit",
 		fmt.Sprintf("update(op=%v db=main table=foo rowid=9)", SQLITE_INSERT),
 		"commit",
@@ -1682,11 +1792,11 @@ func TestUpdateAndTransactionHooks(t *testing.T) {
 }
 
 func TestAuthorizer(t *testing.T) {
-	var authorizerReturn = 0
+	authorizerReturn := 0
 
 	sql.Register("sqlite3_Authorizer", &SQLiteDriver{
 		ConnectHook: func(conn *SQLiteConn) error {
-			conn.RegisterAuthorizer(func(op int, arg1, arg2, arg3 string) int {
+			conn.RegisterAuthorizer(func(_ int, _, _, _ string) int {
 				return authorizerReturn
 			})
 			return nil
@@ -1775,25 +1885,30 @@ func TestNilAndEmptyBytes(t *testing.T) {
 				t.Fatal(tst.name, err)
 			}
 		}
-		rows, err := db.Query(fmt.Sprintf("select txt from tbl%d", tsti))
-		if err != nil {
-			t.Fatal(tst.name, err)
-		}
-		if !rows.Next() {
-			t.Fatal(tst.name, "no rows")
-		}
-		var scanBytes []byte
-		if err = rows.Scan(&scanBytes); err != nil {
-			t.Fatal(tst.name, err)
-		}
-		if err = rows.Err(); err != nil {
-			t.Fatal(tst.name, err)
-		}
-		if tst.expectedBytes == nil && scanBytes != nil {
-			t.Errorf("%s: %#v != %#v", tst.name, scanBytes, tst.expectedBytes)
-		} else if !bytes.Equal(scanBytes, tst.expectedBytes) {
-			t.Errorf("%s: %#v != %#v", tst.name, scanBytes, tst.expectedBytes)
-		}
+		// IIFE so defer rows.Close() fires per loop iteration, not at the
+		// outer function's exit (which would stack one defer per row).
+		func() {
+			rows, err := db.Query(fmt.Sprintf("select txt from tbl%d", tsti))
+			if err != nil {
+				t.Fatal(tst.name, err)
+			}
+			defer rows.Close()
+			if !rows.Next() {
+				t.Fatal(tst.name, "no rows")
+			}
+			var scanBytes []byte
+			if err = rows.Scan(&scanBytes); err != nil {
+				t.Fatal(tst.name, err)
+			}
+			if err = rows.Err(); err != nil {
+				t.Fatal(tst.name, err)
+			}
+			if tst.expectedBytes == nil && scanBytes != nil {
+				t.Errorf("%s: %#v != %#v", tst.name, scanBytes, tst.expectedBytes)
+			} else if !bytes.Equal(scanBytes, tst.expectedBytes) {
+				t.Errorf("%s: %#v != %#v", tst.name, scanBytes, tst.expectedBytes)
+			}
+		}()
 	}
 }
 
@@ -1825,7 +1940,9 @@ func TestNamedParam(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec("drop table foo")
+	if _, execErr := db.Exec("drop table if exists foo"); execErr != nil {
+		t.Fatal("Failed to drop table:", execErr)
+	}
 	_, err = db.Exec("create table foo (id integer, name text, amount integer)")
 	if err != nil {
 		t.Fatal("Failed to create table:", err)
@@ -1849,9 +1966,14 @@ func TestNamedParam(t *testing.T) {
 
 	var id, amount int
 	var name string
-	rows.Scan(&id, &name, &amount)
+	if err := rows.Scan(&id, &name, &amount); err != nil {
+		t.Fatal("Scan failed:", err)
+	}
 	if id != 2 || name != "grault" || amount != 123 {
 		t.Errorf("Expected %d, %q, %d for fetched result, but got %d, %q, %d:", 2, "grault", 123, id, name, amount)
+	}
+	if iterErr := rows.Err(); iterErr != nil {
+		t.Fatal("rows iteration:", iterErr)
 	}
 }
 
@@ -1977,8 +2099,7 @@ func (db *TestDB) tearDown() {
 
 // q replaces ? parameters if needed
 func (db *TestDB) q(sql string) string {
-	switch db.dialect {
-	case POSTGRESQL: // replace with $1, $2, ..
+	if db.dialect == POSTGRESQL { // replace with $1, $2, ..
 		qrx := regexp.MustCompile(`\?`)
 		n := 0
 		return qrx.ReplaceAllStringFunc(sql, func(string) string {
@@ -2013,18 +2134,6 @@ func (db *TestDB) serialPK() string {
 	panic("unknown dialect")
 }
 
-func (db *TestDB) now() string {
-	switch db.dialect {
-	case SQLITE:
-		return "datetime('now')"
-	case POSTGRESQL:
-		return "now()"
-	case MYSQL:
-		return "now()"
-	}
-	panic("unknown dialect")
-}
-
 func makeBench() {
 	if _, err := db.Exec("create table bench (n varchar(32), i integer, d double, s varchar(32), t datetime)"); err != nil {
 		panic(err)
@@ -2043,6 +2152,7 @@ func makeBench() {
 
 // testResult is test for result
 func testResult(t *testing.T) {
+	t.Helper()
 	db.tearDown()
 	db.mustExec("create temporary table test (id " + db.serialPK() + ", name varchar(10))")
 
@@ -2070,8 +2180,9 @@ func testResult(t *testing.T) {
 
 // testBlobs is test for blobs
 func testBlobs(t *testing.T) {
+	t.Helper()
 	db.tearDown()
-	var blob = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	blob := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	db.mustExec("create table foo (id integer primary key, bar " + db.blobType(16) + ")")
 	db.mustExec(db.q("insert into foo (id, bar) values(?,?)"), 0, blob)
 
@@ -2096,11 +2207,12 @@ func testBlobs(t *testing.T) {
 }
 
 func testMultiBlobs(t *testing.T) {
+	t.Helper()
 	db.tearDown()
 	db.mustExec("create table foo (id integer primary key, bar " + db.blobType(16) + ")")
-	var blob0 = []byte{0, 1, 2, 3, 4, 5, 6, 7}
+	blob0 := []byte{0, 1, 2, 3, 4, 5, 6, 7}
 	db.mustExec(db.q("insert into foo (id, bar) values(?,?)"), 0, blob0)
-	var blob1 = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	blob1 := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	db.mustExec(db.q("insert into foo (id, bar) values(?,?)"), 1, blob1)
 
 	r, err := db.Query(db.q("select bar from foo order by id"))
@@ -2147,6 +2259,7 @@ func testMultiBlobs(t *testing.T) {
 
 // testBlobs tests that we distinguish between null and zero-length blobs
 func testNullZeroLengthBlobs(t *testing.T) {
+	t.Helper()
 	db.tearDown()
 	db.mustExec("create table foo (id integer primary key, bar " + db.blobType(16) + ")")
 	db.mustExec(db.q("insert into foo (id, bar) values(?,?)"), 0, nil)
@@ -2177,6 +2290,7 @@ func testNullZeroLengthBlobs(t *testing.T) {
 
 // testManyQueryRow is test for many query row
 func testManyQueryRow(t *testing.T) {
+	t.Helper()
 	if testing.Short() {
 		t.Log("skipping in short mode")
 		return
@@ -2195,6 +2309,7 @@ func testManyQueryRow(t *testing.T) {
 
 // testTxQuery is test for transactional query
 func testTxQuery(t *testing.T) {
+	t.Helper()
 	db.tearDown()
 	tx, err := db.Begin()
 	if err != nil {
@@ -2234,6 +2349,7 @@ func testTxQuery(t *testing.T) {
 
 // testPreparedStmt is test for prepared statement
 func testPreparedStmt(t *testing.T) {
+	t.Helper()
 	db.tearDown()
 	db.mustExec("CREATE TABLE t (count INT)")
 	sel, err := db.Prepare("SELECT count FROM t ORDER BY count DESC")
@@ -2280,6 +2396,7 @@ func testPreparedStmt(t *testing.T) {
 
 // benchmarkExec is benchmark for exec
 func benchmarkExec(b *testing.B) {
+	b.Helper()
 	for i := 0; i < b.N; i++ {
 		if _, err := db.Exec("select 1"); err != nil {
 			panic(err)
@@ -2289,6 +2406,7 @@ func benchmarkExec(b *testing.B) {
 
 // benchmarkQuery is benchmark for query
 func benchmarkQuery(b *testing.B) {
+	b.Helper()
 	for i := 0; i < b.N; i++ {
 		var n sql.NullString
 		var i int
@@ -2303,6 +2421,7 @@ func benchmarkQuery(b *testing.B) {
 
 // benchmarkParams is benchmark for params
 func benchmarkParams(b *testing.B) {
+	b.Helper()
 	for i := 0; i < b.N; i++ {
 		var n sql.NullString
 		var i int
@@ -2317,6 +2436,7 @@ func benchmarkParams(b *testing.B) {
 
 // benchmarkStmt is benchmark for statement
 func benchmarkStmt(b *testing.B) {
+	b.Helper()
 	st, err := db.Prepare("select ?, ?, ?, ?")
 	if err != nil {
 		panic(err)
@@ -2337,31 +2457,38 @@ func benchmarkStmt(b *testing.B) {
 
 // benchmarkRows is benchmark for rows
 func benchmarkRows(b *testing.B) {
+	b.Helper()
 	db.once.Do(makeBench)
 
+	// IIFE wrapper so defer r.Close() fires per iteration; otherwise the
+	// defers stack and only fire at function exit, leaking b.N rows.
 	for n := 0; n < b.N; n++ {
-		var n sql.NullString
-		var i int
-		var f float64
-		var s string
-		var t time.Time
-		r, err := db.Query("select * from bench")
-		if err != nil {
-			panic(err)
-		}
-		for r.Next() {
-			if err = r.Scan(&n, &i, &f, &s, &t); err != nil {
+		func() {
+			var n sql.NullString
+			var i int
+			var f float64
+			var s string
+			var t time.Time
+			r, err := db.Query("select * from bench")
+			if err != nil {
 				panic(err)
 			}
-		}
-		if err = r.Err(); err != nil {
-			panic(err)
-		}
+			defer r.Close()
+			for r.Next() {
+				if err = r.Scan(&n, &i, &f, &s, &t); err != nil {
+					panic(err)
+				}
+			}
+			if err = r.Err(); err != nil {
+				panic(err)
+			}
+		}()
 	}
 }
 
 // benchmarkStmtRows is benchmark for statement rows
 func benchmarkStmtRows(b *testing.B) {
+	b.Helper()
 	db.once.Do(makeBench)
 
 	st, err := db.Prepare("select * from bench")
@@ -2370,23 +2497,28 @@ func benchmarkStmtRows(b *testing.B) {
 	}
 	defer st.Close()
 
+	// IIFE wrapper so defer r.Close() fires per iteration; otherwise the
+	// defers stack and only fire at function exit, leaking b.N rows.
 	for n := 0; n < b.N; n++ {
-		var n sql.NullString
-		var i int
-		var f float64
-		var s string
-		var t time.Time
-		r, err := st.Query()
-		if err != nil {
-			panic(err)
-		}
-		for r.Next() {
-			if err = r.Scan(&n, &i, &f, &s, &t); err != nil {
+		func() {
+			var n sql.NullString
+			var i int
+			var f float64
+			var s string
+			var t time.Time
+			r, err := st.Query()
+			if err != nil {
 				panic(err)
 			}
-		}
-		if err = r.Err(); err != nil {
-			panic(err)
-		}
+			defer r.Close()
+			for r.Next() {
+				if err = r.Scan(&n, &i, &f, &s, &t); err != nil {
+					panic(err)
+				}
+			}
+			if err = r.Err(); err != nil {
+				panic(err)
+			}
+		}()
 	}
 }

@@ -2,16 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- All `rowserrcheck` and `sqlclosecheck` lint findings in inherited test
+  files. `for rows.Next()` loops now check `rows.Err()`; `*sql.Rows` and
+  `*sql.Stmt` resources are deferred-closed; `DROP TABLE` statements use
+  `IF EXISTS` so spurious "no such table" errors stop being silently
+  swallowed.
+
 ### Changed
 
+- `.golangci.yml` adopts Tier 4 silences from the cleanup plan: documented
+  industry-consensus false positives are scoped per-path so production
+  code keeps every meaningful check while test code stops drowning in
+  noise. `--whole-files` is the canonical lint gate via lefthook.
 - Bump vendored SQLCipher to 4.15.0 (was 4.4.2). Generated automatically by .github/workflows/upstream-bump.yml on 2026-05-01.
-
-
-All notable changes to this fork are documented here. The format follows
-[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) and the
-versioning is [SemVer 2.0](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
 
 ### Added
 
@@ -21,6 +26,10 @@ versioning is [SemVer 2.0](https://semver.org/spec/v2.0.0.html).
   projects.
 - `NOTICE` — formal attribution chain.
 - This `CHANGELOG.md`.
+
+All notable changes to this fork are documented here. The format follows
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) and the
+versioning is [SemVer 2.0](https://semver.org/spec/v2.0.0.html).
 
 ### Planned for v4.15.0 (first WissCore release)
 

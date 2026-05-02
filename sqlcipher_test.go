@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/url"
 	"os"
@@ -32,7 +31,7 @@ CREATE TABLE KeyValueStore (
 func init() {
 	// create DB
 	key := url.QueryEscape("passphrase")
-	tmpdir, err := ioutil.TempDir("", testDir)
+	tmpdir, err := os.MkdirTemp("", testDir)
 	if err != nil {
 		panic(err)
 	}
@@ -76,6 +75,7 @@ func TestSQLCipherParallelInsert(t *testing.T) {
 	t.Parallel()
 	insertValueQuery, err := db.Prepare("INSERT INTO KeyValueStore (KeyEntry, ValueEntry) VALUES (?, ?);")
 	require.NoError(t, err)
+	defer insertValueQuery.Close()
 	for key, value := range mapping {
 		_, err := insertValueQuery.Exec(key, value)
 		assert.NoError(t, err)
@@ -88,6 +88,7 @@ func TestSQLCipherParallelSelect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer getValueQuery.Close()
 	for key, value := range mapping {
 		var val string
 		err := getValueQuery.QueryRow(key).Scan(&val)
@@ -100,7 +101,7 @@ func TestSQLCipherParallelSelect(t *testing.T) {
 }
 
 func TestSQLCipherIsEncryptedFalse(t *testing.T) {
-	tmpdir, err := ioutil.TempDir("", testDir)
+	tmpdir, err := os.MkdirTemp("", testDir)
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpdir)
 	dbname := filepath.Join(tmpdir, "unencrypted.sqlite")
@@ -116,7 +117,7 @@ func TestSQLCipherIsEncryptedFalse(t *testing.T) {
 }
 
 func TestSQLCipherIsEncryptedTrue(t *testing.T) {
-	tmpdir, err := ioutil.TempDir("", testDir)
+	tmpdir, err := os.MkdirTemp("", testDir)
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpdir)
 	dbname := filepath.Join(tmpdir, "encrypted.sqlite")
@@ -203,7 +204,10 @@ func ExampleIsEncrypted() {
 	// create table
 	_, err = db.Exec("CREATE TABLE t(x INTEGER);")
 	if err != nil {
-		log.Fatal(err)
+		// godoc Example pattern: log.Fatal terminates the process and
+		// skips deferred Close, which is the canonical idiom for example
+		// code where cleanup happens at process exit.
+		log.Fatal(err) //nolint:gocritic
 	}
 	// make sure database is encrypted
 	encrypted, err := sqlite3.IsEncrypted(dbname)

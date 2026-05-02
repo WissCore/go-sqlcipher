@@ -70,7 +70,7 @@ func newEncryptedDB(t *testing.T, dsnSuffix string) (*sql.DB, string, string) {
 	dsn := fmt.Sprintf("%s?_pragma_key=x'%s'%s", dbname, hexKey, dsnSuffix)
 	db, err := sql.Open("sqlite3", dsn)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { db.Close() })
 
 	require.NoError(t, db.Ping())
 	return db, dbname, hexKey
@@ -111,7 +111,7 @@ func TestWrongKeyRejected(t *testing.T) {
 
 	bad, err := sql.Open("sqlite3", wrongDSN)
 	require.NoError(t, err) // sql.Open is lazy
-	t.Cleanup(func() { _ = bad.Close() })
+	t.Cleanup(func() { bad.Close() })
 
 	_, err = bad.Exec("SELECT count(*) FROM t;")
 	requireSQLiteCode(t, err, sqlite3.ErrNotADB)
@@ -129,7 +129,7 @@ func TestNoKeyAgainstEncryptedRejected(t *testing.T) {
 
 	plain, err := sql.Open("sqlite3", dbname)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = plain.Close() })
+	t.Cleanup(func() { plain.Close() })
 
 	_, err = plain.Exec("SELECT count(*) FROM t;")
 	requireSQLiteCode(t, err, sqlite3.ErrNotADB)
@@ -165,11 +165,11 @@ func TestEncryptedLifecyclePersistence(t *testing.T) {
 	dsn := fmt.Sprintf("%s?_pragma_key=x'%s'", dbname, hexKey)
 	reopened, err := sql.Open("sqlite3", dsn)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = reopened.Close() })
+	t.Cleanup(func() { reopened.Close() })
 
 	rows, err := reopened.Query("SELECT k, v FROM kv ORDER BY k;")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = rows.Close() })
+	t.Cleanup(func() { rows.Close() })
 
 	got := map[string]string{}
 	for rows.Next() {
@@ -263,7 +263,7 @@ func TestCipherPageSizeMatrix(t *testing.T) {
 			dsn := fmt.Sprintf("%s?_pragma_key=x'%s'%s", dbname, hexKey, suffix)
 			reopened, err := sql.Open("sqlite3", dsn)
 			require.NoError(t, err)
-			t.Cleanup(func() { _ = reopened.Close() })
+			t.Cleanup(func() { reopened.Close() })
 
 			var n int
 			require.NoError(t, reopened.QueryRow("SELECT count(*) FROM t;").Scan(&n))
@@ -296,7 +296,7 @@ func TestEncryptedLargeData(t *testing.T) {
 	require.NoError(t, err)
 	stmt, err := tx.Prepare("INSERT INTO big (blob) VALUES (?);")
 	require.NoError(t, err)
-	defer func() { _ = stmt.Close() }()
+	defer stmt.Close()
 	for i := 0; i < rows; i++ {
 		_, ierr := stmt.Exec(smallBlob)
 		require.NoError(t, ierr)
@@ -366,7 +366,7 @@ func TestEncryptedExportToDifferentKey(t *testing.T) {
 	destDSN := fmt.Sprintf("%s?_pragma_key=x'%s'", destPath, destHex)
 	destDB, err := sql.Open("sqlite3", destDSN)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = destDB.Close() })
+	t.Cleanup(func() { destDB.Close() })
 
 	var n int
 	require.NoError(t, destDB.QueryRow("SELECT count(*) FROM secrets;").Scan(&n))
@@ -378,7 +378,7 @@ func TestEncryptedExportToDifferentKey(t *testing.T) {
 	wrongDSN := fmt.Sprintf("%s?_pragma_key=x'%s'", destPath, hex.EncodeToString(wrongKey[:]))
 	bad, err := sql.Open("sqlite3", wrongDSN)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = bad.Close() })
+	t.Cleanup(func() { bad.Close() })
 	_, err = bad.Exec("SELECT count(*) FROM secrets;")
 	requireSQLiteCode(t, err, sqlite3.ErrNotADB)
 }
@@ -412,7 +412,7 @@ func TestPragmaRekey(t *testing.T) {
 	newDSN := fmt.Sprintf("%s?_pragma_key=x'%s'", dbname, newHex)
 	reopened, err := sql.Open("sqlite3", newDSN)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = reopened.Close() })
+	t.Cleanup(func() { reopened.Close() })
 	require.NoError(t, reopened.QueryRow("SELECT count(*) FROM t;").Scan(&n))
 	assert.Equal(t, 2, n)
 }
@@ -479,7 +479,7 @@ func FuzzEncryptedDSNRoundTrip(f *testing.F) {
 		if err != nil {
 			return // sql.Open is lazy; errors here are DSN-parser, fine
 		}
-		defer func() { _ = db.Close() }()
+		defer db.Close()
 		// If the key is empty SQLCipher creates an unencrypted DB
 		// (documented behaviour). Either way Exec must not panic.
 		if _, err := db.Exec(`CREATE TABLE t (x INT); INSERT INTO t VALUES (1);`); err != nil {
@@ -507,7 +507,7 @@ func BenchmarkInsertEncrypted(b *testing.B) {
 	require.NoError(b, err)
 	stmt, err := db.Prepare("INSERT INTO bench (v) VALUES (?);")
 	require.NoError(b, err)
-	defer func() { _ = stmt.Close() }()
+	defer stmt.Close()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -528,7 +528,7 @@ func BenchmarkSelectEncrypted(b *testing.B) {
 	}
 	stmt, err := db.Prepare("SELECT v FROM bench WHERE id = ?;")
 	require.NoError(b, err)
-	defer func() { _ = stmt.Close() }()
+	defer stmt.Close()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -552,7 +552,7 @@ func benchSetupDB(b *testing.B) *sql.DB {
 	dsn := fmt.Sprintf("%s?_pragma_key=x'%s'&_journal_mode=WAL", dbname, hex.EncodeToString(key[:]))
 	db, err := sql.Open("sqlite3", dsn)
 	require.NoError(b, err)
-	b.Cleanup(func() { _ = db.Close() })
+	b.Cleanup(func() { db.Close() })
 	require.NoError(b, db.Ping())
 	return db
 }

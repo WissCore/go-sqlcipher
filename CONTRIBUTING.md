@@ -87,6 +87,83 @@ once.
 | `gitleaks`, `trufflehog` | Secret scan |
 | `actionlint`, `zizmor` | GitHub Actions lint |
 
+## Code conventions
+
+The codebase mixes **inherited upstream code** (most files, originally
+from `mattn/go-sqlite3` via `mutecomm/go-sqlcipher`) and **WissCore
+additions** (e.g. `sqlcipher_validation_test.go`). Both follow the same
+conventions; modernization happens incrementally.
+
+### Lint gate
+
+Pre-commit runs `golangci-lint --new-from-rev=HEAD --whole-files`. New
+issues block the commit; pre-existing legacy is silenced via
+`.golangci.yml` exclusions with cited rationale (see the comments in
+that file). Touching a file forces fixing its full lint debt — there is
+no opt-out per file.
+
+### Error-handling patterns
+
+- **`errors.Is`/`errors.As`** instead of `==` comparisons or type
+  assertions (Go 1.13+ wrapped-error chain stays intact).
+- **`fmt.Errorf("%w", err)`** when wrapping; reserve `%v` for
+  format-only reporting that shouldn't unwrap.
+- **`rows.Err()`** check after every `for rows.Next()` loop or single
+  `rows.Next()` call. Without it, a connection death mid-iteration
+  silently looks like "no more rows".
+- **`defer rows.Close()` / `defer stmt.Close()`** immediately after the
+  successful `Query`/`Prepare`. For loop-scoped resources, wrap the
+  iteration body in an IIFE so the `defer` fires per iteration:
+
+```go
+for j := 0; j < n; j++ {
+    func() {
+        rows, err := db.Query(...)
+        if err != nil { ... }
+        defer rows.Close()
+        // use rows
+    }()
+}
+```
+
+### Variable naming for shadow-avoidance
+
+When an inner block needs its own error variable distinct from the
+outer `err`, use a context-suffixed name rather than a generic alias:
+
+| Operation | Local error name |
+|---|---|
+| `rows.Err()` | `iterErr` |
+| `rows.Scan` | `scanErr` |
+| `db.Exec`, `tx.Query`, `RowsAffected` | `execErr` |
+| `os.Stat` and other syscall wrappers | `statErr` |
+
+### SQL test fixtures
+
+Test setup queries should use `DROP TABLE IF EXISTS` rather than bare
+`DROP TABLE`. The original pattern (`db.Exec("drop table foo")` + ignored
+error) silently swallowed every "no such table" — the modern form fails
+loudly on real DB faults.
+
+### `//nolint` policy
+
+Every `//nolint` annotation must:
+
+1. Specify the linter(s) being silenced: `//nolint:gosec` not bare `//nolint`.
+2. Include an explanatory comment describing the rationale and, where
+   applicable, an upstream issue or doc citation.
+
+Examples:
+
+```go
+//nolint:gosec // G104 false positive: tempFilename is test-controlled
+//nolint:sqlclosecheck // intentionally testing post-Close stmt behaviour
+//nolint:gocritic // cgo false positive (go-critic#897)
+```
+
+If you find yourself adding a `//nolint` without a clear rationale,
+that's a signal the underlying issue should be fixed instead.
+
 ## Tests
 
 ```sh
@@ -96,6 +173,11 @@ go test -race -count=1 ./...
 The vendored SQLCipher test vectors live under `testdata/`; do not modify
 them by hand. If you need to refresh the corpus, do so as part of an
 amalgamation refresh PR.
+
+`-count=N` for `N>1` is currently broken on a small set of inherited
+tests (e.g. `TestUpdateAndTransactionHooks`) due to test-global state in
+the upstream `TestSuite` mechanism. Run `-count=1` for normal CI; full
+isolation work is tracked separately.
 
 ## Vendoring refresh
 
