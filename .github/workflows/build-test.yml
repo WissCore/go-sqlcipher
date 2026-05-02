@@ -18,20 +18,26 @@ permissions:
 
 jobs:
   unix:
-    name: ${{ matrix.os }} / go ${{ matrix.go }}
+    name: ${{ matrix.label }} / go ${{ matrix.go }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu-latest is x86_64. ubuntu-24.04-arm is the GitHub-hosted
-        # ARM64 runner (GA in private repos as of 2026-01). macos-latest
-        # is Apple Silicon (arm64). All three have cgo + race-detector
-        # support out of the box.
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
-        # `oldstable` and `stable` are setup-go aliases that always
-        # resolve to Go's two officially supported releases.
-        go: [oldstable, stable]
+        # Each include row pairs a runner label with a human-readable
+        # name that shows up in the PR checks UI. ubuntu-latest is
+        # x86_64; ubuntu-24.04-arm is the GitHub-hosted ARM64 runner
+        # (GA in private repos as of 2026-01); macos-latest is Apple
+        # Silicon (arm64). All have cgo + race-detector support.
+        # `oldstable` and `stable` track Go's two officially supported
+        # releases via setup-go aliases.
+        include:
+          - {os: ubuntu-latest, label: "Linux x86_64", go: oldstable}
+          - {os: ubuntu-latest, label: "Linux x86_64", go: stable}
+          - {os: ubuntu-24.04-arm, label: "Linux ARM64", go: oldstable}
+          - {os: ubuntu-24.04-arm, label: "Linux ARM64", go: stable}
+          - {os: macos-latest, label: "macOS Apple Silicon", go: oldstable}
+          - {os: macos-latest, label: "macOS Apple Silicon", go: stable}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
@@ -62,7 +68,7 @@ jobs:
         run: go test -race -count=1 ./...
 
   windows:
-    name: windows-latest / go ${{ matrix.go }}
+    name: Windows x86_64 / go ${{ matrix.go }}
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:
