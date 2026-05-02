@@ -18,29 +18,29 @@ permissions:
 
 jobs:
   unix:
-    name: ${{ matrix.platform }} / go ${{ matrix.go }}
-    runs-on: ${{ matrix.runner }}
+    name: ${{ matrix.target.platform }} / go ${{ matrix.go }}
+    runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        # Two real axes (platform, go) so GitHub Actions' left-sidebar
-        # job list renders both — with include-only matrices the UI
-        # collapses to the differentiating axis and platform names
-        # disappear from the navigation. The include block then maps
-        # each platform to its concrete GitHub-hosted runner label.
-        platform:
-          - Linux-x86_64
-          - Linux-ARM64
-          - macOS-Apple-Silicon
-        go: [oldstable, stable]
-        include:
+        # Single object axis pattern: GitHub's left-sidebar label
+        # generator drops axes that come only from `include:`, but a
+        # top-level axis whose values are objects keeps the sidebar
+        # template fully resolvable. Each `target` row pairs the
+        # human-readable platform name with its GitHub-hosted runner
+        # label; the `name:` template above expands at job-start time
+        # and overrides the auto label in both the PR checks panel and
+        # the workflow run-page sidebar (community Discussions #9918,
+        # #49880).
+        target:
           - platform: Linux-x86_64
             runner: ubuntu-latest
           - platform: Linux-ARM64
             runner: ubuntu-24.04-arm
           - platform: macOS-Apple-Silicon
             runner: macos-latest
+        go: [oldstable, stable]
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
