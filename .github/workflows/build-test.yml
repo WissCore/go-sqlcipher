@@ -18,26 +18,29 @@ permissions:
 
 jobs:
   unix:
-    name: ${{ matrix.label }} / go ${{ matrix.go }}
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.platform }} / go ${{ matrix.go }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        # Each include row pairs a runner label with a human-readable
-        # name that shows up in the PR checks UI. ubuntu-latest is
-        # x86_64; ubuntu-24.04-arm is the GitHub-hosted ARM64 runner
-        # (GA in private repos as of 2026-01); macos-latest is Apple
-        # Silicon (arm64). All have cgo + race-detector support.
-        # `oldstable` and `stable` track Go's two officially supported
-        # releases via setup-go aliases.
+        # Two real axes (platform, go) so GitHub Actions' left-sidebar
+        # job list renders both — with include-only matrices the UI
+        # collapses to the differentiating axis and platform names
+        # disappear from the navigation. The include block then maps
+        # each platform to its concrete GitHub-hosted runner label.
+        platform:
+          - Linux-x86_64
+          - Linux-ARM64
+          - macOS-Apple-Silicon
+        go: [oldstable, stable]
         include:
-          - {os: ubuntu-latest, label: "Linux x86_64", go: oldstable}
-          - {os: ubuntu-latest, label: "Linux x86_64", go: stable}
-          - {os: ubuntu-24.04-arm, label: "Linux ARM64", go: oldstable}
-          - {os: ubuntu-24.04-arm, label: "Linux ARM64", go: stable}
-          - {os: macos-latest, label: "macOS Apple Silicon", go: oldstable}
-          - {os: macos-latest, label: "macOS Apple Silicon", go: stable}
+          - platform: Linux-x86_64
+            runner: ubuntu-latest
+          - platform: Linux-ARM64
+            runner: ubuntu-24.04-arm
+          - platform: macOS-Apple-Silicon
+            runner: macos-latest
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
