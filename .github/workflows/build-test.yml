@@ -1,12 +1,13 @@
 # Reusable: invoked by .github/workflows/ci.yml. Builds and tests
-# across an OS × Go matrix. SQLCipher's cgo build needs only a C
+# across OSes and Go versions. SQLCipher's cgo build needs only a C
 # compiler and standard libs (no external OpenSSL — we use the
 # vendored libtomcrypt crypto backend).
 #
-# Layout: Unix and Windows are separate jobs because Windows requires
-# the MSYS2/MinGW toolchain (the Go-shipped gcc detection on Windows
-# is brittle; MSYS2 is the upstream-recommended pattern, mirrored from
-# mattn/go-sqlite3's own CI).
+# Layout: one explicit job per OS rather than one matrix-on-OS job.
+# GitHub Actions' run-page sidebar truncates per-matrix-instance names
+# when the OS lives only in a matrix axis or include block; explicit
+# top-level jobs each get their own sidebar entry with the full
+# human-readable name. Pattern lifted from mattn/go-sqlite3's CI.
 name: build-test
 
 on:
@@ -17,60 +18,103 @@ permissions:
   contents: read
 
 jobs:
-  unix:
-    name: ${{ matrix.target.platform }} / go ${{ matrix.go }}
-    runs-on: ${{ matrix.target.runner }}
+  linux-x86_64:
+    name: Linux x86_64 / go ${{ matrix.go }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        # Single object axis pattern: GitHub's left-sidebar label
-        # generator drops axes that come only from `include:`, but a
-        # top-level axis whose values are objects keeps the sidebar
-        # template fully resolvable. Each `target` row pairs the
-        # human-readable platform name with its GitHub-hosted runner
-        # label; the `name:` template above expands at job-start time
-        # and overrides the auto label in both the PR checks panel and
-        # the workflow run-page sidebar (community Discussions #9918,
-        # #49880).
-        target:
-          - platform: Linux-x86_64
-            runner: ubuntu-latest
-          - platform: Linux-ARM64
-            runner: ubuntu-24.04-arm
-          - platform: macOS-Apple-Silicon
-            runner: macos-latest
         go: [oldstable, stable]
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
         with:
           egress-policy: audit
-
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           persist-credentials: false
-
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
           go-version: ${{ matrix.go }}
-
       - name: Build
         env:
           CGO_ENABLED: "1"
         run: go build -trimpath ./...
-
       - name: Vet
         run: go vet ./...
-
       - name: Test
         env:
           CGO_ENABLED: "1"
         run: go test -race -count=1 ./...
 
-  windows:
+  linux-arm64:
+    name: Linux ARM64 / go ${{ matrix.go }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go: [oldstable, stable]
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+        run: go build -trimpath ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 ./...
+
+  macos-apple-silicon:
+    name: macOS Apple Silicon / go ${{ matrix.go }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go: [oldstable, stable]
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+        run: go build -trimpath ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 ./...
+
+  windows-x86_64:
     name: Windows x86_64 / go ${{ matrix.go }}
     runs-on: windows-latest
     timeout-minutes: 30
@@ -86,12 +130,10 @@ jobs:
         uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40  # v2
         with:
           egress-policy: audit
-
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           persist-credentials: false
-
       - name: Set up MSYS2 + MinGW-w64
         uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c  # v2.31.1
         with:
@@ -99,20 +141,16 @@ jobs:
           update: true
           install: mingw-w64-x86_64-toolchain
           path-type: inherit
-
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
           go-version: ${{ matrix.go }}
-
       - name: Build
         env:
           CGO_ENABLED: "1"
         run: go build -trimpath ./...
-
       - name: Vet
         run: go vet ./...
-
       - name: Test
         env:
           CGO_ENABLED: "1"
